@@ -4,8 +4,8 @@ HelpText='
 proc-monitor.sh [options] \n
 options: \n
   -t "<thread-switch>", the threading switch, only allowed for "H", "m", or "L", default: "H" \n
-  -n "<interval-sec>",  the interval seconds for `sleep` command, 0 means disable,
-                        default "0". \n
+  -n "<interval_sec>",  the interval_sec for bash `sleep` command, 0 means disable,
+                        default: "0" \n
   -o "<ps-opts>",       the orded opts for `ps` command, it will pass to `-o` args,
                         default: "user,pid,ppid,stime,time,%cpu,%mem,cmd" \n
   -s "<sort-column>",   the sort options for `ps` command, it will pass to `-sort` args,
@@ -13,6 +13,7 @@ options: \n
   -f "<filter>",        the filter used for awk "("col-1" >= 1  && "col-2" < 2){print;}",
                         default: "1". \n
   -l "<log-file>",      the logger file, default "" \n
+tips for `awk` filter, allow to use $(f["PID"]) to select the PID column.
 '
 
 POSITIONAL=()
@@ -21,7 +22,6 @@ local_interval_sec=0
 local_ps_opts="user,pid,ppid,stime,time,%cpu,%mem,cmd"
 local_ps_sort=""
 local_filter=1
-local_logfile=""
 
 while [[ $# -gt 0 ]]
 do
@@ -84,13 +84,6 @@ if [[ $local_interval_sec -lt 0 ]]; then
     exit 1
 fi
 
-echo "<local_thread_switch> is $local_thread_switch"
-echo "<local_interval_sec> is $local_interval_sec"
-echo "<local_ps_opts> is $local_ps_opts"
-echo "<local_ps_sort> is $local_ps_sort"
-echo "<local_filter> is $local_filter"
-echo "<local_logfile> is $local_logfile"
-
 function awk_selecing()
 {
     awk -v timestamp=$(date +"%s.%N") "
@@ -121,20 +114,35 @@ function conv_space_to_comma_csv()
     sed -e 's:\s\s*:,:g' - | sed -e 's:,$::g' - | sed -e 's:^,::g' -
 }
 
-if [[ -n $local_logfile ]]; then
-    echo "timestamp,$local_ps_opts" > $local_logfile
+function print_header()
+{
+    echo "timestamp,$local_ps_opts" | tr '[:lower:]' '[:upper:]'
+}
+
+if [[ $local_logfile ]]; then
+    print_header > $local_logfile
 fi
 
 while : ; do
-    if [[ -n $local_logfile ]]; then
-        ps_function | conv_space_to_comma_csv | tee -i -a $local_logfile
+    #start_timing=$(date +%s.%N)
+    print_header
+    echo "----------------------------"
+    if [[ $local_logfile ]]; then
+        ps_function | conv_space_to_comma_csv | tail -n +2 | tee -i -a $local_logfile
+        ret=$?; if [[ $ret -ne 0 ]]; then
+            exit $ret
+        fi
     else
-        ps_function | conv_space_to_comma_csv
+        ps_function | conv_space_to_comma_csv | tail -n +2
+        ret=$?; if [[ $ret -ne 0 ]]; then
+            exit $ret
+        fi
     fi
-    if [[ $local_interval_sec -le 0 ]]; then
-        break
-    else
+    if [[ $local_interval_sec != 0 ]]; then
+        #now_timing=$(date +%s.%N)
         sleep $local_interval_sec
+    else
+        break;
     fi
 done
 
